@@ -19471,14 +19471,14 @@ will be further integrated into the Sparkfun Library for other footprints.  It c
 <part name="GND4" library="SparkFun-Aesthetics" deviceset="GND" device=""/>
 <part name="C1" library="SparkFun-Capacitors" deviceset="0.1UF-25V-5%(0603)" device="" value="0.1uF"/>
 <part name="C2" library="SparkFun-Capacitors" deviceset="0.1UF-25V-5%(0603)" device="" value="0.1uF"/>
-<part name="SJ1" library="SparkFun-Passives" deviceset="JUMPER-PAD-3-NC_BY_TRACE" device=""/>
+<part name="SJ1" library="SparkFun-Passives" deviceset="JUMPER-PAD-3-NC_BY_TRACE" device="" value="EN I2C PULL"/>
 <part name="SUPPLY3" library="SparkFun-Aesthetics" deviceset="3.3V" device=""/>
 <part name="R1" library="SparkFun-Resistors" deviceset="4.7KOHM-1/10W-1%(0603)" device="" value="4.7K"/>
 <part name="R2" library="SparkFun-Resistors" deviceset="4.7KOHM-1/10W-1%(0603)" device="" value="4.7K"/>
 <part name="R3" library="SparkFun-Resistors" deviceset="4.7KOHM-1/10W-1%(0603)" device="" value="4.7K"/>
-<part name="SJ2" library="SparkFun-Passives" deviceset="JUMPER-PAD-2-NC_BY_TRACE" device=""/>
+<part name="SJ2" library="SparkFun-Passives" deviceset="JUMPER-PAD-2-NC_BY_TRACE" device="" value="EN SPI CS"/>
 <part name="SUPPLY4" library="SparkFun-Aesthetics" deviceset="3.3V" device=""/>
-<part name="SJ3" library="SparkFun-Passives" deviceset="JUMPER-PAD-3-2OF3_NC_BY_PASTE" device=""/>
+<part name="SJ3" library="SparkFun-Passives" deviceset="JUMPER-PAD-3-2OF3_NC_BY_PASTE" device="" value="EN ADR PULLUP"/>
 <part name="R4" library="SparkFun-Resistors" deviceset="4.7KOHM-1/10W-1%(0603)" device="" value="4.7K"/>
 <part name="SUPPLY5" library="SparkFun-Aesthetics" deviceset="3.3V" device=""/>
 <part name="GND5" library="SparkFun-Aesthetics" deviceset="GND" device=""/>
@@ -19502,16 +19502,18 @@ will be further integrated into the Sparkfun Library for other footprints.  It c
 <text x="171.704" y="11.43" size="2.54" layer="94">Marshall Taylor</text>
 <text x="236.728" y="6.604" size="2.54" layer="94">V01</text>
 <text x="7.62" y="172.72" size="3.81" layer="97">BME280 Breakout</text>
-<text x="10.668" y="131.318" size="1.778" layer="97" align="top-left">SJ3 controls the lowest bit
-of the I2C address.
-Open for SPI mode</text>
+<text x="8.128" y="141.478" size="1.778" layer="97" align="top-left">SJ3 controls the lowest bit
+of the I2C address--can be:
+  0x1110110
+  0x1110111
+  Open for SPI mode</text>
 <text x="145.288" y="166.878" size="1.778" layer="97" align="top-left">SJ1 and SJ2 allow disconnection of the
 pull-up resistors.  Disconnect for SPI
 mode if necessary.</text>
 <text x="7.62" y="55.88" size="3.81" layer="97">Ports:</text>
-<wire x1="248.92" y1="66.04" x2="147.32" y2="66.04" width="0.1524" layer="94"/>
-<wire x1="147.32" y1="66.04" x2="0" y2="66.04" width="0.1524" layer="94"/>
-<wire x1="147.32" y1="35.56" x2="147.32" y2="66.04" width="0.1524" layer="94"/>
+<wire x1="248.92" y1="66.04" x2="147.32" y2="66.04" width="0.1524" layer="97" style="longdash"/>
+<wire x1="147.32" y1="66.04" x2="0" y2="66.04" width="0.1524" layer="97" style="longdash"/>
+<wire x1="147.32" y1="35.56" x2="147.32" y2="66.04" width="0.1524" layer="97" style="longdash"/>
 <text x="8.128" y="53.848" size="1.778" layer="97" align="top-left">(Use only 1)</text>
 <text x="27.94" y="41.148" size="3.81" layer="97">I2C</text>
 <text x="81.28" y="46.228" size="3.81" layer="97">SPI</text>
@@ -19528,17 +19530,22 @@ mode if necessary.</text>
 <instance part="GND4" gate="1" x="86.36" y="88.9"/>
 <instance part="C1" gate="G$1" x="86.36" y="96.52"/>
 <instance part="C2" gate="G$1" x="93.98" y="96.52"/>
-<instance part="SJ1" gate="G$1" x="154.94" y="139.7" rot="R270"/>
+<instance part="SJ1" gate="G$1" x="154.94" y="139.7" smashed="yes" rot="R270">
+<attribute name="NAME" x="152.781" y="137.16" size="1.778" layer="95" rot="R270"/>
+<attribute name="VALUE" x="155.575" y="137.16" size="1.778" layer="96" rot="R270"/>
+</instance>
 <instance part="SUPPLY3" gate="G$1" x="154.94" y="147.32"/>
 <instance part="R1" gate="G$1" x="147.32" y="132.08" rot="R90"/>
 <instance part="R2" gate="G$1" x="162.56" y="132.08" rot="R90"/>
 <instance part="R3" gate="G$1" x="177.8" y="124.46" rot="R90"/>
 <instance part="SJ2" gate="G$1" x="177.8" y="137.16" smashed="yes" rot="R90">
-<attribute name="NAME" x="175.26" y="134.62" size="1.778" layer="95" rot="R90"/>
+<attribute name="NAME" x="180.34" y="142.24" size="1.778" layer="95" rot="R270"/>
+<attribute name="VALUE" x="182.88" y="142.24" size="1.778" layer="96" rot="R270"/>
 </instance>
 <instance part="SUPPLY4" gate="G$1" x="177.8" y="147.32"/>
 <instance part="SJ3" gate="G$1" x="58.42" y="124.46" smashed="yes" rot="R180">
-<attribute name="NAME" x="55.88" y="124.079" size="1.778" layer="95" rot="R180"/>
+<attribute name="NAME" x="52.959" y="121.92" size="1.778" layer="95" rot="R90"/>
+<attribute name="VALUE" x="55.245" y="121.92" size="1.778" layer="96" rot="R90"/>
 </instance>
 <instance part="R4" gate="G$1" x="58.42" y="137.16" rot="R90"/>
 <instance part="SUPPLY5" gate="G$1" x="58.42" y="144.78"/>
@@ -19756,6 +19763,11 @@ mode if necessary.</text>
 </nets>
 </sheet>
 </sheets>
+<errors>
+<approved hash="113,1,154.94,140.377,SJ1,,,,,"/>
+<approved hash="113,1,38.6927,30.5223,JP1,,,,,"/>
+<approved hash="113,1,90.7627,33.2147,JP2,,,,,"/>
+</errors>
 </schematic>
 </drawing>
 <compatibility>
