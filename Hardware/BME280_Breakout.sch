@@ -9008,7 +9008,7 @@ will be further integrated into the Sparkfun Library for other footprints.  It c
 <sheet>
 <plain>
 <text x="171.704" y="11.43" size="2.54" layer="94">Marshall Taylor</text>
-<text x="236.728" y="6.604" size="2.54" layer="94">V02</text>
+<text x="236.728" y="6.604" size="2.54" layer="94">V10</text>
 <text x="7.62" y="175.26" size="3.81" layer="97">BME280 Breakout</text>
 <text x="5.588" y="118.618" size="1.778" layer="97" align="top-left">SJ3 controls the lowest bit
 of the I2C address--can be:
