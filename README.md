@@ -3,7 +3,7 @@ SparkFun BME280
 
 ![SparkFun BME280 Breakout](https://github.com/sparkfun/SparkFun_BME280_Breakout_Board/blob/master/readme_picture.jpg)
 
-[*SparkFun BME280 (BOB-13676)*](https://www.sparkfun.com/products/13676)
+[*SparkFun BME280 (SEN-13676)*](https://www.sparkfun.com/products/13676)
 
 The Bosch BME280 sensor measures atmospheric pressure from 30kPa to 110kPa as well as relative humidity and temperature.  The SparkFun breakout provides a 3.3v SPI interface and a 5v tolerant I2C interface (has pull-up resistors to 3.3v).
 
@@ -24,7 +24,7 @@ Documentation
 
 Product Versions
 ----------------
-* [*BOB-13676*](https://www.sparkfun.com/products/13676)
+* [*SEN-13676*](https://www.sparkfun.com/products/13676)
 
 Version History
 ---------------
