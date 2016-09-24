@@ -103,6 +103,8 @@ struct SensorSettings
 	uint8_t pressOverSample;
 	uint8_t humidOverSample;
 
+    // correction of temperature - added to the result
+    float tempCorrection;
 };
 
 //Used to hold the calibration constants.  These are used

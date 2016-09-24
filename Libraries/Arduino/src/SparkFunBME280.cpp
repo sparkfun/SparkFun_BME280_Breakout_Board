@@ -48,7 +48,8 @@ BME280::BME280( void )
 	settings.tempOverSample = 0;
 	settings.pressOverSample = 0;
 	settings.humidOverSample = 0;
-
+        // correction of temperature - added to the result
+        settings.tempCorrection = 0.0;
 }
 
 
@@ -252,7 +253,7 @@ float BME280::readTempC( void )
 	t_fine = var1 + var2;
 	float output = (t_fine * 5 + 128) >> 8;
 
-	output = output / 100;
+	output = output / 100 + settings.tempCorrection;
 	
 	return output;
 }
