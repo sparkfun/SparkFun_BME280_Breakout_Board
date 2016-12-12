@@ -19,4 +19,4 @@ $git subtree pull -P Libraries/<COMPILER NAME> --squash <product library repo UR
 
 Example:
 
-$C:\github\SparkFun_BME280_Breakout_Board [master ≡]> git subtree pull -P Libraries/ --squash https://github.com/sparkfun/SparkFun_BME280_Arduino_Library V_1.1.0
+$git subtree pull -P Libraries/Arduino --squash https://github.com/sparkfun/SparkFun_BME280_Arduino_Library.git V_1.1.0
