@@ -13,6 +13,10 @@ Directory Contents
 
 Update Library Instructions:
 ----------------------------
-To get the most up-to-date version of the library, you must run the following git subtree commands. 
+To get the most up-to-date version of the library, you must run the following git subtree command from the repo top level. 
 
-$git subtree pull -P Libraries/<COMPILER NAME> --squash <product library repo URL> master
+$git subtree pull -P Libraries/<COMPILER NAME> --squash <product library repo URL> <tag>
+
+Example:
+
+$git subtree pull -P Libraries/Arduino --squash https://github.com/sparkfun/SparkFun_BME280_Arduino_Library.git V_1.1.0

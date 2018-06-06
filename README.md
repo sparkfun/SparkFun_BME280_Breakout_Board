@@ -30,6 +30,7 @@ Version History
 ---------------
 
 * [V_1.0.0](https://github.com/sparkfun/SparkFun_BME280_Breakout_Board/tree/V_1.0.0) - Public release.
+* [V_1.1.0](https://github.com/sparkfun/SparkFun_BME280_Breakout_Board/tree/V_1.1.0) - Squashed arduino library changes.
 
 License Information
 -------------------
