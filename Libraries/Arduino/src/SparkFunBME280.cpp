@@ -10,7 +10,7 @@ Uses Wire.h for i2c operation
 Uses SPI.h for SPI operation
 
 Development environment specifics:
-Arduino IDE 1.6.4
+Arduino IDE 1.8.5
 Teensy loader 1.23
 
 This code is released under the [MIT License](http://opensource.org/licenses/MIT).
@@ -21,11 +21,6 @@ Distributed as-is; no warranty is given.
 //See SparkFunBME280.h for additional topology notes.
 
 #include "SparkFunBME280.h"
-#include "stdint.h"
-#include <math.h>
-
-#include "Wire.h"
-#include "SPI.h"
 
 //****************************************************************************//
 //
@@ -36,19 +31,22 @@ Distributed as-is; no warranty is given.
 //Constructor -- Specifies default configuration
 BME280::BME280( void )
 {
-	//Construct with these default settings if nothing is specified
+	//Construct with these default settings
 
-	//Select interface mode
-	settings.commInterface = I2C_MODE; //Can be I2C_MODE, SPI_MODE
-	//Select address for I2C.  Does nothing for SPI
-	settings.I2CAddress = 0x77; //Ignored for SPI_MODE
-	//Select CS pin for SPI.  Does nothing for I2C
-	settings.chipSelectPin = 10;
-	settings.runMode = 0;
-	settings.tempOverSample = 0;
-	settings.pressOverSample = 0;
-	settings.humidOverSample = 0;
+	settings.commInterface = I2C_MODE; //Default to I2C
 
+	settings.I2CAddress = 0x77; //Default, jumper open is 0x77
+	_hardPort = &Wire; //Default to Wire port
+
+	settings.chipSelectPin = 10; //Select CS pin for SPI
+	
+	//These are deprecated settings
+	settings.runMode = 3; //Normal/Run
+	settings.tStandby = 0; //0.5ms
+	settings.filter = 0; //Filter off
+	settings.tempOverSample = 1;
+	settings.pressOverSample = 1;
+	settings.humidOverSample = 1;
 }
 
 
@@ -63,19 +61,38 @@ BME280::BME280( void )
 //****************************************************************************//
 uint8_t BME280::begin()
 {
-	//Check the settings structure values to determine how to setup the device
-	uint8_t dataToWrite = 0;  //Temporary variable
+	delay(2);  //Make sure sensor had enough time to turn on. BME280 requires 2ms to start up.
 
+	//Check the settings structure values to determine how to setup the device
 	switch (settings.commInterface)
 	{
 
 	case I2C_MODE:
-		Wire.begin();
+		
+		switch(_wireType)
+		{
+			case(HARD_WIRE):
+				_hardPort->begin(); //The caller can begin their port and set the speed. We just confirm it here otherwise it can be hard to debug.
+				break;
+			case(SOFT_WIRE):
+			#ifdef SoftwareWire_h
+				_softPort->begin(); //The caller can begin their port and set the speed. We just confirm it here otherwise it can be hard to debug.
+			#endif
+				break;
+		}
 		break;
 
 	case SPI_MODE:
 		// start the SPI library:
 		SPI.begin();
+		#ifdef ARDUINO_ARCH_ESP32
+		SPI.setFrequency(1000000);
+		// Data is read and written MSb first.
+		SPI.setBitOrder(SPI_MSBFIRST);
+		// Like the standard arduino/teensy comment below, mode0 seems wrong according to standards
+		// but conforms to the timing diagrams when used for the ESP32
+		SPI.setDataMode(SPI_MODE0);
+		#else
 		// Maximum SPI frequency is 10MHz, could divide by 2 here:
 		SPI.setClockDivider(SPI_CLOCK_DIV32);
 		// Data is read and written MSb first.
@@ -85,7 +102,8 @@ uint8_t BME280::begin()
 		// This was SPI_MODE3 for RedBoard, but I had to change to
 		// MODE0 for Teensy 3.1 operation
 		SPI.setDataMode(SPI_MODE3);
-		// initalize the  data ready and chip select pins:
+		#endif
+		// initialize the  data ready and chip select pins:
 		pinMode(settings.chipSelectPin, OUTPUT);
 		digitalWrite(settings.chipSelectPin, HIGH);
 		break;
@@ -94,8 +112,12 @@ uint8_t BME280::begin()
 		break;
 	}
 
+	//Check communication with IC before anything else
+	uint8_t chipID = readRegister(BME280_CHIP_ID_REG); //Should return 0x60 or 0x58
+	if(chipID != 0x58 && chipID != 0x60) // Is this BMP or BME?
+	return(chipID); //This is not BMP nor BME!
+
 	//Reading all compensation data, range 0x88:A1, 0xE1:E7
-	
 	calibration.dig_T1 = ((uint16_t)((readRegister(BME280_DIG_T1_MSB_REG) << 8) + readRegister(BME280_DIG_T1_LSB_REG)));
 	calibration.dig_T2 = ((int16_t)((readRegister(BME280_DIG_T2_MSB_REG) << 8) + readRegister(BME280_DIG_T2_LSB_REG)));
 	calibration.dig_T3 = ((int16_t)((readRegister(BME280_DIG_T3_MSB_REG) << 8) + readRegister(BME280_DIG_T3_LSB_REG)));
@@ -115,32 +137,226 @@ uint8_t BME280::begin()
 	calibration.dig_H3 = ((uint8_t)(readRegister(BME280_DIG_H3_REG)));
 	calibration.dig_H4 = ((int16_t)((readRegister(BME280_DIG_H4_MSB_REG) << 4) + (readRegister(BME280_DIG_H4_LSB_REG) & 0x0F)));
 	calibration.dig_H5 = ((int16_t)((readRegister(BME280_DIG_H5_MSB_REG) << 4) + ((readRegister(BME280_DIG_H4_LSB_REG) >> 4) & 0x0F)));
-	calibration.dig_H6 = ((uint8_t)readRegister(BME280_DIG_H6_REG));
+	calibration.dig_H6 = ((int8_t)readRegister(BME280_DIG_H6_REG));
 
-	//Set the oversampling control words.
-	//config will only be writeable in sleep mode, so first insure that.
-	writeRegister(BME280_CTRL_MEAS_REG, 0x00);
+	//Most of the time the sensor will be init with default values
+	//But in case user has old/deprecated code, use the settings.x values
+	setStandbyTime(settings.tStandby);
+	setFilter(settings.filter);
+	setPressureOverSample(settings.pressOverSample); //Default of 1x oversample
+	setHumidityOverSample(settings.humidOverSample); //Default of 1x oversample
+	setTempOverSample(settings.tempOverSample); //Default of 1x oversample
 	
-	//Set the config word
-	dataToWrite = (settings.tStandby << 0x5) & 0xE0;
-	dataToWrite |= (settings.filter << 0x02) & 0x1C;
-	writeRegister(BME280_CONFIG_REG, dataToWrite);
+	setMode(MODE_NORMAL); //Go!
 	
-	//Set ctrl_hum first, then ctrl_meas to activate ctrl_hum
-	dataToWrite = settings.humidOverSample & 0x07; //all other bits can be ignored
-	writeRegister(BME280_CTRL_HUMIDITY_REG, dataToWrite);
+	return(readRegister(BME280_CHIP_ID_REG)); //Should return 0x60
+}
+
+//Begin comm with BME280 over SPI
+bool BME280::beginSPI(uint8_t csPin)
+{
+	settings.chipSelectPin = csPin;
+	settings.commInterface = SPI_MODE;
 	
-	//set ctrl_meas
-	//First, set temp oversampling
-	dataToWrite = (settings.tempOverSample << 0x5) & 0xE0;
-	//Next, pressure oversampling
-	dataToWrite |= (settings.pressOverSample << 0x02) & 0x1C;
-	//Last, set mode
-	dataToWrite |= (settings.runMode) & 0x03;
-	//Load the byte
-	writeRegister(BME280_CTRL_MEAS_REG, dataToWrite);
+	if(begin() == 0x58) return(true); //Begin normal init with these settings. Should return chip ID of 0x58 for BMP
+	if(begin() == 0x60) return(true); //Begin normal init with these settings. Should return chip ID of 0x60 for BME
+	return(false);
+}
+
+//Begin comm with BME280 over I2C
+bool BME280::beginI2C(TwoWire &wirePort)
+{
+	_hardPort = &wirePort;
+	_wireType = HARD_WIRE;
+
+	settings.commInterface = I2C_MODE;
 	
-	return readRegister(0xD0);
+	//settings.I2CAddress = 0x77; //We assume user has set the I2C address using setI2CAddress()
+	if(begin() == 0x58) return(true); //Begin normal init with these settings. Should return chip ID of 0x58 for BMP
+	if(begin() == 0x60) return(true); //Begin normal init with these settings. Should return chip ID of 0x60 for BME
+	return(false);
+}
+
+//Begin comm with BME280 over software I2C
+#ifdef SoftwareWire_h
+bool BME280::beginI2C(SoftwareWire& wirePort)
+{
+	_softPort = &wirePort;
+	_wireType = SOFT_WIRE;
+
+	settings.commInterface = I2C_MODE;
+	//settings.I2CAddress = 0x77; //We assume user has set the I2C address using setI2CAddress()
+
+	if(begin() == 0x58) return(true); //Begin normal init with these settings. Should return chip ID of 0x58 for BMP
+	if(begin() == 0x60) return(true); //Begin normal init with these settings. Should return chip ID of 0x60 for BME
+	return(false);
+}
+#endif
+
+//Set the mode bits in the ctrl_meas register
+// Mode 00 = Sleep
+// 01 and 10 = Forced
+// 11 = Normal mode
+void BME280::setMode(uint8_t mode)
+{
+	if(mode > 0b11) mode = 0; //Error check. Default to sleep mode
+	
+	uint8_t controlData = readRegister(BME280_CTRL_MEAS_REG);
+	controlData &= ~( (1<<1) | (1<<0) ); //Clear the mode[1:0] bits
+	controlData |= mode; //Set
+	writeRegister(BME280_CTRL_MEAS_REG, controlData);
+}
+
+//Gets the current mode bits in the ctrl_meas register
+//Mode 00 = Sleep
+// 01 and 10 = Forced
+// 11 = Normal mode
+uint8_t BME280::getMode()
+{
+	uint8_t controlData = readRegister(BME280_CTRL_MEAS_REG);
+	return(controlData & 0b00000011); //Clear bits 7 through 2
+}
+
+//Set the standby bits in the config register
+//tStandby can be:
+//  0, 0.5ms
+//  1, 62.5ms
+//  2, 125ms
+//  3, 250ms
+//  4, 500ms
+//  5, 1000ms
+//  6, 10ms
+//  7, 20ms
+void BME280::setStandbyTime(uint8_t timeSetting)
+{
+	if(timeSetting > 0b111) timeSetting = 0; //Error check. Default to 0.5ms
+	
+	uint8_t controlData = readRegister(BME280_CONFIG_REG);
+	controlData &= ~( (1<<7) | (1<<6) | (1<<5) ); //Clear the 7/6/5 bits
+	controlData |= (timeSetting << 5); //Align with bits 7/6/5
+	writeRegister(BME280_CONFIG_REG, controlData);
+}
+
+//Set the filter bits in the config register
+//filter can be off or number of FIR coefficients to use:
+//  0, filter off
+//  1, coefficients = 2
+//  2, coefficients = 4
+//  3, coefficients = 8
+//  4, coefficients = 16
+void BME280::setFilter(uint8_t filterSetting)
+{
+	if(filterSetting > 0b111) filterSetting = 0; //Error check. Default to filter off
+	
+	uint8_t controlData = readRegister(BME280_CONFIG_REG);
+	controlData &= ~( (1<<4) | (1<<3) | (1<<2) ); //Clear the 4/3/2 bits
+	controlData |= (filterSetting << 2); //Align with bits 4/3/2
+	writeRegister(BME280_CONFIG_REG, controlData);
+}
+
+//Set the temperature oversample value
+//0 turns off temp sensing
+//1 to 16 are valid over sampling values
+void BME280::setTempOverSample(uint8_t overSampleAmount)
+{
+	overSampleAmount = checkSampleValue(overSampleAmount); //Error check
+	
+	uint8_t originalMode = getMode(); //Get the current mode so we can go back to it at the end
+	
+	setMode(MODE_SLEEP); //Config will only be writeable in sleep mode, so first go to sleep mode
+
+	//Set the osrs_t bits (7, 6, 5) to overSampleAmount
+	uint8_t controlData = readRegister(BME280_CTRL_MEAS_REG);
+	controlData &= ~( (1<<7) | (1<<6) | (1<<5) ); //Clear bits 765
+	controlData |= overSampleAmount << 5; //Align overSampleAmount to bits 7/6/5
+	writeRegister(BME280_CTRL_MEAS_REG, controlData);
+	
+	setMode(originalMode); //Return to the original user's choice
+}
+
+//Set the pressure oversample value
+//0 turns off pressure sensing
+//1 to 16 are valid over sampling values
+void BME280::setPressureOverSample(uint8_t overSampleAmount)
+{
+	overSampleAmount = checkSampleValue(overSampleAmount); //Error check
+	
+	uint8_t originalMode = getMode(); //Get the current mode so we can go back to it at the end
+	
+	setMode(MODE_SLEEP); //Config will only be writeable in sleep mode, so first go to sleep mode
+
+	//Set the osrs_p bits (4, 3, 2) to overSampleAmount
+	uint8_t controlData = readRegister(BME280_CTRL_MEAS_REG);
+	controlData &= ~( (1<<4) | (1<<3) | (1<<2) ); //Clear bits 432
+	controlData |= overSampleAmount << 2; //Align overSampleAmount to bits 4/3/2
+	writeRegister(BME280_CTRL_MEAS_REG, controlData);
+	
+	setMode(originalMode); //Return to the original user's choice
+}
+
+//Set the humidity oversample value
+//0 turns off humidity sensing
+//1 to 16 are valid over sampling values
+void BME280::setHumidityOverSample(uint8_t overSampleAmount)
+{
+	overSampleAmount = checkSampleValue(overSampleAmount); //Error check
+	
+	uint8_t originalMode = getMode(); //Get the current mode so we can go back to it at the end
+	
+	setMode(MODE_SLEEP); //Config will only be writeable in sleep mode, so first go to sleep mode
+
+	//Set the osrs_h bits (2, 1, 0) to overSampleAmount
+	uint8_t controlData = readRegister(BME280_CTRL_HUMIDITY_REG);
+	controlData &= ~( (1<<2) | (1<<1) | (1<<0) ); //Clear bits 2/1/0
+	controlData |= overSampleAmount << 0; //Align overSampleAmount to bits 2/1/0
+	writeRegister(BME280_CTRL_HUMIDITY_REG, controlData);
+
+	setMode(originalMode); //Return to the original user's choice
+}
+
+//Validates an over sample value
+//Allowed values are 0 to 16
+//These are used in the humidty, pressure, and temp oversample functions
+uint8_t BME280::checkSampleValue(uint8_t userValue)
+{
+	switch(userValue) 
+	{
+		case(0): 
+			return 0;
+			break; //Valid
+		case(1): 
+			return 1;
+			break; //Valid
+		case(2): 
+			return 2;
+			break; //Valid
+		case(4): 
+			return 3;
+			break; //Valid
+		case(8): 
+			return 4;
+			break; //Valid
+		case(16): 
+			return 5;
+			break; //Valid
+		default: 
+			return 1; //Default to 1x
+			break; //Good
+	}
+}
+
+//Set the global setting for the I2C address we want to communicate with
+//Default is 0x77
+void BME280::setI2CAddress(uint8_t address)
+{
+	settings.I2CAddress = address; //Set the I2C address for this device
+}
+
+//Check the measuring bit and return true while device is taking measurement
+bool BME280::isMeasuring(void)
+{
+	uint8_t stat = readRegister(BME280_STAT_REG);
+	return(stat & (1<<3)); //If the measuring bit (3) is set, return true
 }
 
 //Strictly resets.  Run .begin() afterwards
@@ -160,7 +376,9 @@ float BME280::readFloatPressure( void )
 
 	// Returns pressure in Pa as unsigned 32 bit integer in Q24.8 format (24 integer bits and 8 fractional bits).
 	// Output value of “24674867” represents 24674867/256 = 96386.2 Pa = 963.862 hPa
-	int32_t adc_P = ((uint32_t)readRegister(BME280_PRESSURE_MSB_REG) << 12) | ((uint32_t)readRegister(BME280_PRESSURE_LSB_REG) << 4) | ((readRegister(BME280_PRESSURE_XLSB_REG) >> 4) & 0x0F);
+    uint8_t buffer[3];
+	readRegisterRegion(buffer, BME280_PRESSURE_MSB_REG, 3);
+    int32_t adc_P = ((uint32_t)buffer[0] << 12) | ((uint32_t)buffer[1] << 4) | ((buffer[2] >> 4) & 0x0F);
 	
 	int64_t var1, var2, p_acc;
 	var1 = ((int64_t)t_fine) - 128000;
@@ -183,11 +401,40 @@ float BME280::readFloatPressure( void )
 	
 }
 
+//Sets the internal variable _referencePressure so the 
+void BME280::setReferencePressure(float refPressure)
+{
+	_referencePressure = refPressure;
+}
+
+//Return the local reference pressure
+float BME280::getReferencePressure()
+{
+	return(_referencePressure);
+}
+
+// Returns pressure in inch of hg
+float BME280::readPressureInhg( void )
+{
+	float p_ingh = readFloatPressure();
+	p_ingh = p_ingh * 0.00029530;
+
+	return p_ingh;
+}
+
+float BME280::readPressureAtm( void )
+{
+  float p_atm = readFloatPressure();
+  p_atm = p_atm * 0.000009869232699999999;
+
+  return p_atm;
+}
+
 float BME280::readFloatAltitudeMeters( void )
 {
 	float heightOutput = 0;
 	
-	heightOutput = ((float)-45846.2)*(pow(((float)readFloatPressure()/(float)101325), 0.190263) - (float)1);
+	heightOutput = ((float)-45846.2)*(pow(((float)readFloatPressure()/(float)_referencePressure), 0.190263) - (float)1);
 	return heightOutput;
 	
 }
@@ -211,7 +458,9 @@ float BME280::readFloatHumidity( void )
 	
 	// Returns humidity in %RH as unsigned 32 bit integer in Q22. 10 format (22 integer and 10 fractional bits).
 	// Output value of “47445” represents 47445/1024 = 46. 333 %RH
-	int32_t adc_H = ((uint32_t)readRegister(BME280_HUMIDITY_MSB_REG) << 8) | ((uint32_t)readRegister(BME280_HUMIDITY_LSB_REG));
+    uint8_t buffer[2];
+	readRegisterRegion(buffer, BME280_HUMIDITY_MSB_REG, 2);
+    int32_t adc_H = ((uint32_t)buffer[0] << 8) | ((uint32_t)buffer[1]);
 	
 	int32_t var1;
 	var1 = (t_fine - ((int32_t)76800));
@@ -223,10 +472,7 @@ float BME280::readFloatHumidity( void )
 	var1 = (var1 > 419430400 ? 419430400 : var1);
 
 	return (float)(var1>>12) / 1024.0;
-
 }
-
-
 
 //****************************************************************************//
 //
@@ -240,7 +486,9 @@ float BME280::readTempC( void )
 	// t_fine carries fine temperature as global value
 
 	//get the reading (adc_T);
-	int32_t adc_T = ((uint32_t)readRegister(BME280_TEMPERATURE_MSB_REG) << 12) | ((uint32_t)readRegister(BME280_TEMPERATURE_LSB_REG) << 4) | ((readRegister(BME280_TEMPERATURE_XLSB_REG) >> 4) & 0x0F);
+    uint8_t buffer[3];
+	readRegisterRegion(buffer, BME280_TEMPERATURE_MSB_REG, 3);
+    int32_t adc_T = ((uint32_t)buffer[0] << 12) | ((uint32_t)buffer[1] << 4) | ((buffer[2] >> 4) & 0x0F);
 
 	//By datasheet, calibrate
 	int64_t var1, var2;
@@ -264,6 +512,60 @@ float BME280::readTempF( void )
 	return output;
 }
 
+double BME280::dewPointC(void)
+{
+  double celsius = readTempC(); 
+  double humidity = readFloatHumidity();
+  // (1) Saturation Vapor Pressure = ESGG(T)
+  double RATIO = 373.15 / (273.15 + celsius);
+  double RHS = -7.90298 * (RATIO - 1);
+  RHS += 5.02808 * log10(RATIO);
+  RHS += -1.3816e-7 * (pow(10, (11.344 * (1 - 1/RATIO ))) - 1) ;
+  RHS += 8.1328e-3 * (pow(10, (-3.49149 * (RATIO - 1))) - 1) ;
+  RHS += log10(1013.246);
+
+        // factor -3 is to adjust units - Vapor Pressure SVP * humidity
+  double VP = pow(10, RHS - 3) * humidity;
+
+        // (2) DEWPOINT = F(Vapor Pressure)
+  double T = log(VP/0.61078);   // temp var
+  return (241.88 * T) / (17.558 - T);
+}
+
+double BME280::dewPointF(void)
+{
+  double fehrenheit = readTempF(); 
+  double humidity = readFloatHumidity();
+  // (1) Saturation Vapor Pressure = ESGG(T)
+  double RATIO = 373.15 / (273.15 + fehrenheit);
+  double RHS = -7.90298 * (RATIO - 1);
+  RHS += 5.02808 * log10(RATIO);
+  RHS += -1.3816e-7 * (pow(10, (11.344 * (1 - 1/RATIO ))) - 1) ;
+  RHS += 8.1328e-3 * (pow(10, (-3.49149 * (RATIO - 1))) - 1) ;
+  RHS += log10(1013.246);
+
+        // factor -3 is to adjust units - Vapor Pressure SVP * humidity
+  double VP = pow(10, RHS - 3) * humidity;
+
+        // (2) DEWPOINT = F(Vapor Pressure)
+  double T = log(VP/0.61078);   // temp var
+  return (241.88 * T) / (17.558 - T);
+}
+
+// delta max = 0.6544 wrt dewPoint()
+// 6.9 x faster than dewPoint()
+// reference: http://en.wikipedia.org/wiki/Dew_point
+double BME280::dewPointFast(void)
+{
+  double fehrenheit = readTempF(); 
+  double humidity = readFloatHumidity();
+  double a = 17.271;
+  double b = 237.7;
+  double temp = (a * fehrenheit) / (b + fehrenheit) + log(humidity*0.01);
+  double Td = (b * temp) / (a - temp);
+  return Td;
+}
+
 //****************************************************************************//
 //
 //  Utility
@@ -279,18 +581,40 @@ void BME280::readRegisterRegion(uint8_t *outputPointer , uint8_t offset, uint8_t
 	{
 
 	case I2C_MODE:
-		Wire.beginTransmission(settings.I2CAddress);
-		Wire.write(offset);
-		Wire.endTransmission();
-
-		// request bytes from slave device
-		Wire.requestFrom(settings.I2CAddress, length);
-		while ( (Wire.available()) && (i < length))  // slave may send less than requested
+		switch(_wireType)
 		{
-			c = Wire.read(); // receive a byte as character
-			*outputPointer = c;
-			outputPointer++;
-			i++;
+			case(HARD_WIRE):
+				_hardPort->beginTransmission(settings.I2CAddress);
+				_hardPort->write(offset);
+				_hardPort->endTransmission();
+
+				// request bytes from slave device
+				_hardPort->requestFrom(settings.I2CAddress, length);
+				while ( (_hardPort->available()) && (i < length))  // slave may send less than requested
+				{
+					c = _hardPort->read(); // receive a byte as character
+					*outputPointer = c;
+					outputPointer++;
+					i++;
+				}
+				break;
+			case(SOFT_WIRE):
+			#ifdef SoftwareWire_h
+				_softPort->beginTransmission(settings.I2CAddress);
+				_softPort->write(offset);
+				_softPort->endTransmission();
+
+				// request bytes from slave device
+				_softPort->requestFrom(settings.I2CAddress, length);
+				while ( (_softPort->available()) && (i < length))  // slave may send less than requested
+				{
+					c = _softPort->read(); // receive a byte as character
+					*outputPointer = c;
+					outputPointer++;
+					i++;
+				}
+			#endif
+				break;
 		}
 		break;
 
@@ -319,20 +643,40 @@ void BME280::readRegisterRegion(uint8_t *outputPointer , uint8_t offset, uint8_t
 uint8_t BME280::readRegister(uint8_t offset)
 {
 	//Return value
-	uint8_t result;
+	uint8_t result = 0;
 	uint8_t numBytes = 1;
 	switch (settings.commInterface) {
 
 	case I2C_MODE:
-		Wire.beginTransmission(settings.I2CAddress);
-		Wire.write(offset);
-		Wire.endTransmission();
-
-		Wire.requestFrom(settings.I2CAddress, numBytes);
-		while ( Wire.available() ) // slave may send less than requested
+		switch(_wireType)
 		{
-			result = Wire.read(); // receive a byte as a proper uint8_t
+			case(HARD_WIRE):
+				_hardPort->beginTransmission(settings.I2CAddress);
+				_hardPort->write(offset);
+				_hardPort->endTransmission();
+
+				_hardPort->requestFrom(settings.I2CAddress, numBytes);
+				while ( _hardPort->available() ) // slave may send less than requested
+				{
+					result = _hardPort->read(); // receive a byte as a proper uint8_t
+				}
+				break;
+			
+			case(SOFT_WIRE):
+			#ifdef SoftwareWire_h
+				_softPort->beginTransmission(settings.I2CAddress);
+				_softPort->write(offset);
+				_softPort->endTransmission();
+
+				_softPort->requestFrom(settings.I2CAddress, numBytes);
+				while ( _softPort->available() ) // slave may send less than requested
+				{
+					result = _softPort->read(); // receive a byte as a proper uint8_t
+				}
+			#endif
+				break;
 		}
+		
 		break;
 
 	case SPI_MODE:
@@ -367,12 +711,26 @@ void BME280::writeRegister(uint8_t offset, uint8_t dataToWrite)
 	{
 	case I2C_MODE:
 		//Write the byte
-		Wire.beginTransmission(settings.I2CAddress);
-		Wire.write(offset);
-		Wire.write(dataToWrite);
-		Wire.endTransmission();
-		break;
 
+		switch(_wireType)
+		{
+			case(HARD_WIRE):
+				_hardPort->beginTransmission(settings.I2CAddress);
+				_hardPort->write(offset);
+				_hardPort->write(dataToWrite);
+				_hardPort->endTransmission();
+				break;
+			case(SOFT_WIRE):
+			#ifdef SoftwareWire_h
+				_softPort->beginTransmission(settings.I2CAddress);
+				_softPort->write(offset);
+				_softPort->write(dataToWrite);
+				_softPort->endTransmission();
+			#endif
+				break;
+		}
+		break;
+		
 	case SPI_MODE:
 		// take the chip select low to select the device:
 		digitalWrite(settings.chipSelectPin, LOW);
