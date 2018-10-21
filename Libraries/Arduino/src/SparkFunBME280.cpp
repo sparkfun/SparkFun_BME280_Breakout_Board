@@ -513,6 +513,14 @@ float BME280::readTempF( void )
 	return output;
 }
 
+//****************************************************************************//
+//
+//  Dew point Section
+//
+//****************************************************************************//
+
+// Returns Dew point in DegC
+
 double BME280::dewPointC(void)
 {
   double celsius = readTempC(); 
@@ -532,6 +540,8 @@ double BME280::dewPointC(void)
   double T = log(VP/0.61078);   // temp var
   return (241.88 * T) / (17.558 - T);
 }
+
+// Returns Dew point in DegF
 
 double BME280::dewPointF(void)
 {
