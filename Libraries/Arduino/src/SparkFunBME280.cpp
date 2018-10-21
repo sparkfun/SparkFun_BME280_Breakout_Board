@@ -413,7 +413,7 @@ float BME280::getReferencePressure()
 	return(_referencePressure);
 }
 
-// Returns pressure in inch of hg
+// Returns pressure in inch of Mercury
 float BME280::readPressureInhg( void )
 {
 	float p_ingh = readFloatPressure();
@@ -422,6 +422,7 @@ float BME280::readPressureInhg( void )
 	return p_ingh;
 }
 
+// Returns pressure in Atmospheric pressure unit atm
 float BME280::readPressureAtm( void )
 {
   float p_atm = readFloatPressure();
